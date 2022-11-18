@@ -1,4 +1,5 @@
 import concurrent.futures
+import csv
 import functools
 import itertools
 import math
@@ -13,7 +14,7 @@ def calc_com(m1, c1, m2, c2):
 	return (m1 * c1 + m2 * c2) / (m1 + m2)
 
 
-def process_xyz(xyz_file):
+def process_xyz(train_df, xyz_file):
 	# Molecule identifier
 	mol_id = path.splitext(path.basename(xyz_file))[0]
 
@@ -21,7 +22,7 @@ def process_xyz(xyz_file):
 	current_xyz = pd.read_csv(xyz_file, skiprows=2, header=None, sep=' ')
 
 	# Rows that match the current .xyz file molecule
-	matching_atom_pairs = _TRAIN_DF[_TRAIN_DF['molecule_name'] == mol_id]
+	matching_atom_pairs = train_df[train_df['molecule_name'] == mol_id]
 
 	# Iterate through atomic pairs from matching_atom_pairs
 	for (_, row) in matching_atom_pairs.iterrows():
@@ -55,29 +56,49 @@ def process_xyz(xyz_file):
 		sorted_distances = {k: v for k, v in sorted(distances.items(), key=lambda item: item[1])}
 		closest_2 = tuple(itertools.islice(sorted_distances.items(), 2))
 
-		with _TRAIN_DF.get_lock():
-			_TRAIN_DF.loc[row['id'], 'n1_mol'] = current_xyz.iloc[closest_2[0][0]][0]
-			_TRAIN_DF.loc[row['id'], 'n1_dist'] = closest_2[0][1]
+		# with _TRAIN_DF.get_lock():
+		# 	_TRAIN_DF.loc[row['id'], 'n1_mol'] = current_xyz.iloc[closest_2[0][0]][0]
+		# 	_TRAIN_DF.loc[row['id'], 'n1_dist'] = closest_2[0][1]
+		#
+		# 	if len(closest_2) > 1:
+		# 		_TRAIN_DF.loc[row['id'], 'n2_mol'] = current_xyz.iloc[closest_2[1][0]][0]
+		# 		_TRAIN_DF.loc[row['id'], 'n2_dist'] = closest_2[1][1]
+		#
+		# 	_TRAIN_DF.loc[row['id'], 'atom_1_type'] = atom_1_type
+		# 	_TRAIN_DF.loc[row['id'], 'atom_2_type'] = atom_2_type
+	csv_writer.writerow([
+		row['id'],
+		row['molecule_name'],
+		row['atom_index_0'],
+		atom_1_type,
+		row['atom_index_1'],
+		atom_2_type,
+		row['type'],
+		row['scalar_coupling_constant'],
+		current_xyz.iloc[closest_2[0][0]][0],
+		closest_2[0][1],
+		current_xyz.iloc[closest_2[1][0]][0],
+		closest_2[1][1]
+	])
 
-			if len(closest_2) > 1:
-				_TRAIN_DF.loc[row['id'], 'n2_mol'] = current_xyz.iloc[closest_2[1][0]][0]
-				_TRAIN_DF.loc[row['id'], 'n2_dist'] = closest_2[1][1]
 
-			_TRAIN_DF.loc[row['id'], 'atom_1_type'] = atom_1_type
-			_TRAIN_DF.loc[row['id'], 'atom_2_type'] = atom_2_type
-
-
-def init_globals(train_df):
-	global _TRAIN_DF
-	_TRAIN_DF = train_df
-	# _TRAIN_DF = pd.read_csv(train_f)
-	#
-	# _TRAIN_DF['atom_1_type'] = ''
-	# _TRAIN_DF['atom_2_type'] = ''
-	# _TRAIN_DF['n1_mol'] = ''
-	# _TRAIN_DF['n1_dist'] = 0
-	# _TRAIN_DF['n2_mol'] = ''
-	# _TRAIN_DF['n2_dist'] = 0
+def init_globals(csv_target):
+	global _CSV_WRITER
+	_CSV_WRITER = csv.writer(csv_target)
+	_CSV_WRITER.writerow([
+		'id',
+		'molecule_name',
+		'atom_index_0',
+		'atom_type_0',
+		'atom_index_1',
+		'atom_type_1',
+		'type',
+		'scalar_coupling_constant',
+		'nearest_type_0',
+		'nearest_dist_0',
+		'nearest_type_1',
+		'nearest_dist_1'
+	])
 
 
 def main():
@@ -90,18 +111,24 @@ def main():
 
 	train_df = pd.read_csv(train_file)
 
-	train_df['atom_1_type'] = ''
-	train_df['atom_2_type'] = ''
-	train_df['n1_mol'] = ''
-	train_df['n1_dist'] = 0
-	train_df['n2_mol'] = ''
-	train_df['n2_dist'] = 0
+	# train_df['atom_1_type'] = ''
+	# train_df['atom_2_type'] = ''
+	# train_df['n1_mol'] = ''
+	# train_df['n1_dist'] = 0
+	# train_df['n2_mol'] = ''
+	# train_df['n2_dist'] = 0
 
-	executor = concurrent.futures.ProcessPoolExecutor(12, initializer=init_globals, initargs=(train_df,))
-	futures = [executor.submit(process_xyz, args=(structures_dir + '/' + file)) for file in xyz_list[:3]]
-	concurrent.futures.wait(futures)
-	executor.shutdown()
-	print(train_df.head(50))
+	with open('./data/train_w_knn.csv', 'w') as csv_file:
+		# _CSV_WRITER = csv.writer(csv_file)
+		# _CSV_WRITER.writerow(
+		# 	['id', 'molecule_name', 'atom_index_0', 'atom_type_0', 'atom_index_1', 'atom_type_1', 'type', 'scalar_coupling_constant', 'nearest_type_0',
+		# 		'nearest_dist_0', 'nearest_type_1', 'nearest_dist_1']
+		# )
+
+		executor = concurrent.futures.ProcessPoolExecutor(12, initializer=init_globals, initargs=(csv_file,))
+		futures = [executor.submit(process_xyz, args=(train_df, structures_dir + '/' + file)) for file in xyz_list[:3]]
+		concurrent.futures.wait(futures)
+		executor.shutdown()
 
 # print('Saving to .csv')  # _TRAIN_DF.to_csv('./data/train_w_knn.csv')  # print('Finished!')
 
