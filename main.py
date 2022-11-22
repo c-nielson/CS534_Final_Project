@@ -20,7 +20,7 @@ def process_xyz(train_df, structures_dir):
 	counter = 0
 
 	# Iterate through .xyz list
-	for f in xyz_list[:6]:
+	for f in xyz_list:
 		counter += 1
 		print(f'Processing file {counter} / {total_files}:\n\t{f}')
 
@@ -93,7 +93,6 @@ def main():
 	train_df['n2_dist'] = 0
 
 	process_xyz(train_df, structures_dir)
-	print(train_df.head(20))
 
 	print('Saving...')
 	train_df.to_csv('./data/train_w_knn.csv')
