@@ -53,14 +53,11 @@ def process_xyz(train_df, structures_dir):
 			# Dictionary of atom index and (mass-weighted) distance to atomic pair COM
 			distances = {}
 
-			# index_list = list()
+			# List of indices that are not the current atoms
 			index_list = filter(
 				lambda i: i != atom_1_index and i != atom_2_index,
 				range(0, current_xyz.shape[0])
 			)
-			# index_list.remove(atom_1_index)
-			# index_list.remove(atom_2_index)
-			# print(f'atom 0: {atom_1_index}\tatom 1: {atom_2_index}\n{[i for i in index_list]}')
 
 			for atom in current_xyz.iloc[index_list].iterrows():
 				# Center of mass between atomic pair COM and atom
