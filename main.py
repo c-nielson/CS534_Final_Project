@@ -1,6 +1,7 @@
 import functools
 import itertools
 import math
+import sys
 
 from molmass import ELEMENTS, Element
 from os import listdir, path
@@ -12,16 +13,22 @@ def calc_com(m1, c1, m2, c2):
 	return (m1 * c1 + m2 * c2) / (m1 + m2)
 
 
-def process_xyz(train_df):
+def process_xyz(train_df, structures_dir):
 	xyz_list = listdir(structures_dir)  # List of .xyz files
 
+	total_files = len(xyz_list)
+	counter = 0
+
 	# Iterate through .xyz list
-	for f in xyz_list:
+	for f in xyz_list[:6]:
+		counter += 1
+		print(f'Processing file {counter} / {total_files}:\n\t{f}')
+
 		# Molecule identifier
-		mol_id = path.splitext(path.basename(structures_dir + f))[0]
+		mol_id = path.splitext(f)[0]
 
 		# DF of current .xyz file
-		current_xyz = pd.read_csv(structures_dir + f, skiprows=2, header=None, sep=' ')
+		current_xyz = pd.read_csv(structures_dir + '/' + f, skiprows=2, header=None, sep=' ')
 
 		# Rows that match the current .xyz file molecule
 		matching_atom_pairs = train_df[train_df['molecule_name'] == mol_id]
@@ -46,9 +53,14 @@ def process_xyz(train_df):
 			# Dictionary of atom index and (mass-weighted) distance to atomic pair COM
 			distances = {}
 
-			index_list = list(range(0, current_xyz.shape[0]))
-			index_list.remove(atom_1_index)
-			index_list.remove(atom_2_index)
+			# index_list = list()
+			index_list = filter(
+				lambda i: i != atom_1_index and i != atom_2_index,
+				range(0, current_xyz.shape[0])
+			)
+			# index_list.remove(atom_1_index)
+			# index_list.remove(atom_2_index)
+			# print(f'atom 0: {atom_1_index}\tatom 1: {atom_2_index}\n{[i for i in index_list]}')
 
 			for atom in current_xyz.iloc[index_list].iterrows():
 				# Center of mass between atomic pair COM and atom
@@ -61,17 +73,35 @@ def process_xyz(train_df):
 			train_df.loc[row['id'], 'n1_mol'] = current_xyz.iloc[closest_2[0][0]][0]
 			train_df.loc[row['id'], 'n1_dist'] = closest_2[0][1]
 
-			train_df.loc[row['id'], 'n2_mol'] = current_xyz.iloc[closest_2[1][0]][0]
-			train_df.loc[row['id'], 'n2_dist'] = closest_2[1][1]
+			if len(closest_2) > 1:
+				train_df.loc[row['id'], 'n2_mol'] = current_xyz.iloc[closest_2[1][0]][0]
+				train_df.loc[row['id'], 'n2_dist'] = closest_2[1][1]
+
+			train_df.loc[row['id'], 'atom_type_0'] = atom_1_type
+			train_df.loc[row['id'], 'atom_type_1'] = atom_2_type
 
 
-if __name__ == "__main__":
+def main():
 	train_file = filedialog.askopenfilename(title='Select Training File', initialdir='./')
 	structures_dir = filedialog.askdirectory(title='Select Structures Directory', initialdir='./')
+
 	train_df = pd.read_csv(train_file)
+
+	train_df['atom_type_0'] = ''
+	train_df['atom_type_1'] = ''
+
 	train_df['n1_mol'] = ''
 	train_df['n1_dist'] = 0
 	train_df['n2_mol'] = ''
 	train_df['n2_dist'] = 0
-	process_xyz(train_df)
+
+	process_xyz(train_df, structures_dir)
+	print(train_df.head(20))
+
+	print('Saving...')
 	train_df.to_csv('./data/train_w_knn.csv')
+	print('Finished!')
+
+
+if __name__ == "__main__":
+	sys.exit(main())
