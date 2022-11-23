@@ -1,20 +1,21 @@
 import concurrent.futures
-import csv
 import functools
 import itertools
 import math
-
-from molmass import ELEMENTS, Element
 from os import listdir, path
-import pandas as pd
 from tkinter import filedialog
+
+import pandas as pd
+from molmass import ELEMENTS
 
 
 def calc_com(m1, c1, m2, c2):
 	return (m1 * c1 + m2 * c2) / (m1 + m2)
 
 
-def process_xyz(train_df, xyz_file):
+def process_xyz(train_df, xyz_file, file_num, total_files):
+	print(f'Processing file {file_num} / {total_files}:\n\t{xyz_file}')
+
 	# Molecule identifier
 	mol_id = path.splitext(path.basename(xyz_file))[0]
 
@@ -23,6 +24,8 @@ def process_xyz(train_df, xyz_file):
 
 	# Rows that match the current .xyz file molecule
 	matching_atom_pairs = train_df[train_df['molecule_name'] == mol_id]
+
+	result = [train_df]
 
 	# Iterate through atomic pairs from matching_atom_pairs
 	for (_, row) in matching_atom_pairs.iterrows():
@@ -44,61 +47,48 @@ def process_xyz(train_df, xyz_file):
 		# Dictionary of atom index and (mass-weighted) distance to atomic pair COM
 		distances = {}
 
-		index_list = list(range(0, current_xyz.shape[0]))
-		index_list.remove(atom_1_index)
-		index_list.remove(atom_2_index)
+		# List of atom indices excluding the current atom pair
+		index_list = filter(
+			lambda i: i != atom_1_index and i != atom_2_index, range(0, current_xyz.shape[0])
+		)
 
+		# Iterate through index_list and calculate (mass-weighted) COM between atom and current pair COM
 		for atom in current_xyz.iloc[index_list].iterrows():
 			# Center of mass between atomic pair COM and atom
 			pair_com = calc_com((ELEMENTS[atom_1_type].mass + ELEMENTS[atom_2_type].mass) / 2, com, ELEMENTS[atom[1][0]].mass, atom[1][1:4])
 			distances[atom[0]] = math.sqrt(functools.reduce(lambda x, y: x + y, (com.array - pair_com) ** 2))
 
+		# Sort by distance and calculate closest 2
 		sorted_distances = {k: v for k, v in sorted(distances.items(), key=lambda item: item[1])}
 		closest_2 = tuple(itertools.islice(sorted_distances.items(), 2))
 
-		# with _TRAIN_DF.get_lock():
-		# 	_TRAIN_DF.loc[row['id'], 'n1_mol'] = current_xyz.iloc[closest_2[0][0]][0]
-		# 	_TRAIN_DF.loc[row['id'], 'n1_dist'] = closest_2[0][1]
-		#
-		# 	if len(closest_2) > 1:
-		# 		_TRAIN_DF.loc[row['id'], 'n2_mol'] = current_xyz.iloc[closest_2[1][0]][0]
-		# 		_TRAIN_DF.loc[row['id'], 'n2_dist'] = closest_2[1][1]
-		#
-		# 	_TRAIN_DF.loc[row['id'], 'atom_1_type'] = atom_1_type
-		# 	_TRAIN_DF.loc[row['id'], 'atom_2_type'] = atom_2_type
-	csv_writer.writerow([
-		row['id'],
-		row['molecule_name'],
-		row['atom_index_0'],
-		atom_1_type,
-		row['atom_index_1'],
-		atom_2_type,
-		row['type'],
-		row['scalar_coupling_constant'],
-		current_xyz.iloc[closest_2[0][0]][0],
-		closest_2[0][1],
-		current_xyz.iloc[closest_2[1][0]][0],
-		closest_2[1][1]
-	])
+		result.append(
+			{
+				'index': row['id'],
+				'atom_type_0': atom_1_type,
+				'atom_type_1': atom_2_type,
+				'n1_mol': current_xyz.iloc[closest_2[0][0]][0],
+				'n1_dist': closest_2[0][1],
+				'n2_mol': current_xyz.iloc[closest_2[1][0]][0] if len(closest_2) > 1 else '',
+				'n2_dist': closest_2[1][1] if len(closest_2) > 1 else 0
+			}
+		)
+
+	return result
 
 
-def init_globals(csv_target):
-	global _CSV_WRITER
-	_CSV_WRITER = csv.writer(csv_target)
-	_CSV_WRITER.writerow([
-		'id',
-		'molecule_name',
-		'atom_index_0',
-		'atom_type_0',
-		'atom_index_1',
-		'atom_type_1',
-		'type',
-		'scalar_coupling_constant',
-		'nearest_type_0',
-		'nearest_dist_0',
-		'nearest_type_1',
-		'nearest_dist_1'
-	])
+def update_df(future: concurrent.futures.Future):
+	train_df = future.result()[0]
+
+	for result in future.result()[1:]:
+		train_df.loc[result['index'], 'n1_mol'] = result['n1_mol']
+		train_df.loc[result['index'], 'n1_dist'] = result['n1_dist']
+
+		train_df.loc[result['index'], 'n2_mol'] = result['n2_mol']
+		train_df.loc[result['index'], 'n2_dist'] = result['n2_dist']
+
+		train_df.loc[result['index'], 'atom_type_0'] = result['atom_type_0']
+		train_df.loc[result['index'], 'atom_type_1'] = result['atom_type_1']
 
 
 def main():
@@ -107,32 +97,31 @@ def main():
 
 	xyz_list = listdir(structures_dir)  # List of .xyz files
 	total_files = len(xyz_list)
-	file_counter = 0
+	num_files = iter(range(1, total_files + 1))
 
 	train_df = pd.read_csv(train_file)
 
-	# train_df['atom_1_type'] = ''
-	# train_df['atom_2_type'] = ''
-	# train_df['n1_mol'] = ''
-	# train_df['n1_dist'] = 0
-	# train_df['n2_mol'] = ''
-	# train_df['n2_dist'] = 0
+	train_df['atom_type_0'] = ''
+	train_df['atom_type_1'] = ''
+	train_df['n1_mol'] = ''
+	train_df['n1_dist'] = 0
+	train_df['n2_mol'] = ''
+	train_df['n2_dist'] = 0
 
-	with open('./data/train_w_knn.csv', 'w') as csv_file:
-		# _CSV_WRITER = csv.writer(csv_file)
-		# _CSV_WRITER.writerow(
-		# 	['id', 'molecule_name', 'atom_index_0', 'atom_type_0', 'atom_index_1', 'atom_type_1', 'type', 'scalar_coupling_constant', 'nearest_type_0',
-		# 		'nearest_dist_0', 'nearest_type_1', 'nearest_dist_1']
-		# )
+	with concurrent.futures.ThreadPoolExecutor(12) as executor:
+		futures = [executor.submit(
+			process_xyz, train_df, structures_dir + '/' + file, next(num_files), total_files
+		) for file in xyz_list]
+		for future in futures:
+			future.add_done_callback(update_df)
+		concurrent.futures.wait(futures)  # executor.shutdown()
 
-		executor = concurrent.futures.ProcessPoolExecutor(12, initializer=init_globals, initargs=(csv_file,))
-		futures = [executor.submit(process_xyz, args=(train_df, structures_dir + '/' + file)) for file in xyz_list[:3]]
-		concurrent.futures.wait(futures)
-		executor.shutdown()
-
-# print('Saving to .csv')  # _TRAIN_DF.to_csv('./data/train_w_knn.csv')  # print('Finished!')
+	print('Saving...')
+	train_df.to_csv('./data/train_w_knn.csv')
+	print('Finished!')
 
 
 if __name__ == "__main__":
 	import sys
+
 	sys.exit(main())
