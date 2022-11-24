@@ -51,11 +51,6 @@ def process_xyz(
 	:return: None
 	:rtype:
 	"""
-	if file_num is not None and total_files is not None:
-		lock.acquire()
-		print(f'Processing file {file_num} / {total_files}...\n\t{xyz_file}')
-		lock.release()
-
 	# Molecule identifier
 	mol_id = path.splitext(path.basename(xyz_file))[0]
 
@@ -64,6 +59,8 @@ def process_xyz(
 
 	# Rows that match the current .xyz file molecule
 	matching_atom_pairs = train_df[train_df['molecule_name'] == mol_id]
+
+	results = []
 
 	# Iterate through atomic pairs from matching_atom_pairs
 	for (_, row) in matching_atom_pairs.iterrows():
@@ -100,17 +97,19 @@ def process_xyz(
 		sorted_distances = {k: v for k, v in sorted(distances.items(), key=lambda item: item[1])}
 		closest_2 = tuple(itertools.islice(sorted_distances.items(), 2))
 
-		# Write results to output .csv file
-		lock.acquire()
-		print(f'Writing row {row["id"]}...')
-
-		# Write result to new row
-		csv_out.writerow(
+		results.append(
 			[row['id'], mol_id, atom_0_index, atom_0_type, atom_1_index, atom_1_type, row['type'], row['scalar_coupling_constant'],
 				current_xyz.iloc[closest_2[0][0]][0], closest_2[0][1], current_xyz.iloc[closest_2[1][0]][0] if len(closest_2) > 1 else '',
 				closest_2[1][1] if len(closest_2) > 1 else 0]
 		)
-		lock.release()
+
+	# Write results to csv_out
+	lock.acquire()
+	for result in results:
+		csv_out.writerow(result)
+	if file_num is not None and total_files is not None:
+		print(f'Finished {file_num} / {total_files}\n\t{xyz_file}')
+	lock.release()
 
 
 def main() -> None:
