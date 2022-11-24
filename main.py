@@ -3,7 +3,6 @@ import csv
 import functools
 import itertools
 import math
-import threading
 from os import listdir, path
 from tkinter import filedialog, simpledialog
 
@@ -31,25 +30,21 @@ def calc_com(m1: float, c1: pandas.Series, m2: float, c2: pandas.Series) -> pand
 
 
 def process_xyz(
-	train_df: pandas.DataFrame, csv_out: csv.writer, lock: threading.Lock, xyz_file: str, file_counter=None, total_files: int = None
-) -> None:
+	train_df: pandas.DataFrame, xyz_file: str, file_counter=None, total_files: int = None
+) -> list:
 	"""
 	Processes one .xyz file; calculates centers of mass of atom combinations and finds nearest neighbors. Writes result using csv_out.
 
 	:param train_df: DataFrame containing all training points
 	:type train_df:
-	:param csv_out: csv.writer object that is already configured
-	:type csv_out: csv.writer
-	:param lock: Lock object
-	:type lock:
 	:param xyz_file: .xyz file to process
 	:type xyz_file:
 	:param file_counter: current number of file; for console writing purposes only
 	:type file_counter: iterator
 	:param total_files: total number of files; for console writing purposes only
 	:type total_files:
-	:return: None
-	:rtype:
+	:return: list of results
+	:rtype: list
 	"""
 	# Molecule identifier
 	mol_id = path.splitext(path.basename(xyz_file))[0]
@@ -103,13 +98,10 @@ def process_xyz(
 				closest_2[1][1] if len(closest_2) > 1 else 0]
 		)
 
-	# Write results to csv_out
-	lock.acquire()
-	for result in results:
-		csv_out.writerow(result)
 	if file_counter is not None and total_files is not None:
-		print(f'Finished {next(file_counter)} / {total_files}\n\t{xyz_file}')
-	lock.release()
+		print(f'\tFinished {next(file_counter)} / {total_files}:\n\t\t{xyz_file}')
+
+	return results
 
 
 def main() -> None:
@@ -130,8 +122,20 @@ def main() -> None:
 
 	train_df = pd.read_csv(train_file)
 
-	lock = threading.Lock()
+	# Spin off threads
+	print('Processing files...')
+	with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
+		futures = [executor.submit(
+			process_xyz, train_df, structures_dir + '/' + file, num_files, total_files
+		) for file in xyz_list]
 
+		# Wait for all .xyz files to be processed
+		concurrent.futures.wait(futures)
+
+	futures_total = len(futures)
+	futures_num = iter(range(1, futures_total + 1))
+	print('\nWriting results...')
+	# Write all results to file
 	with open(output_file, 'w', newline='') as csv_file:
 		csv_out = csv.writer(csv_file)
 		# Write header
@@ -140,13 +144,10 @@ def main() -> None:
 				'n1_dist', 'n2_type', 'n2_dist']
 		)
 
-		# Spin off threads
-		with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
-			futures = [executor.submit(
-				process_xyz, train_df, csv_out, lock, structures_dir + '/' + file, num_files, total_files
-			) for file in xyz_list]
-			# Wait for all .xyz files to be processed
-			concurrent.futures.wait(futures)
+		for future in futures:
+			print(f'\t{next(futures_num)} / {futures_total}')
+			for result in future.result():
+				csv_out.writerow(result)
 
 	print('\nFinished!')
 
