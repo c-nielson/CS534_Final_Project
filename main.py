@@ -31,7 +31,7 @@ def calc_com(m1: float, c1: pandas.Series, m2: float, c2: pandas.Series) -> pand
 
 
 def process_xyz(
-	train_df: pandas.DataFrame, csv_out: csv.writer, lock: threading.Lock, xyz_file: str, file_num: int = None, total_files: int = None
+	train_df: pandas.DataFrame, csv_out: csv.writer, lock: threading.Lock, xyz_file: str, file_counter=None, total_files: int = None
 ) -> None:
 	"""
 	Processes one .xyz file; calculates centers of mass of atom combinations and finds nearest neighbors. Writes result using csv_out.
@@ -44,8 +44,8 @@ def process_xyz(
 	:type lock:
 	:param xyz_file: .xyz file to process
 	:type xyz_file:
-	:param file_num: current number of file; for console writing purposes only
-	:type file_num:
+	:param file_counter: current number of file; for console writing purposes only
+	:type file_counter: iterator
 	:param total_files: total number of files; for console writing purposes only
 	:type total_files:
 	:return: None
@@ -107,8 +107,8 @@ def process_xyz(
 	lock.acquire()
 	for result in results:
 		csv_out.writerow(result)
-	if file_num is not None and total_files is not None:
-		print(f'Finished {file_num} / {total_files}\n\t{xyz_file}')
+	if file_counter is not None and total_files is not None:
+		print(f'Finished {next(file_counter)} / {total_files}\n\t{xyz_file}')
 	lock.release()
 
 
@@ -143,7 +143,7 @@ def main() -> None:
 		# Spin off threads
 		with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
 			futures = [executor.submit(
-				process_xyz, train_df, csv_out, lock, structures_dir + '/' + file, next(num_files), total_files
+				process_xyz, train_df, csv_out, lock, structures_dir + '/' + file, num_files, total_files
 			) for file in xyz_list]
 			# Wait for all .xyz files to be processed
 			concurrent.futures.wait(futures)
