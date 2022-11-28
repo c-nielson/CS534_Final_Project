@@ -98,26 +98,41 @@ def process_xyz(
 
 		# Iterate through index_list and calculate (mass-weighted) COM between atom and current pair COM
 		for atom in current_xyz.iloc[index_list].iterrows():
-			# Center of mass between atomic pair COM and atom, scaled inversely to neighbour mass (i.e. heavier atoms appear closer than smaller
-			# atoms)
-			pair_com = calc_com((ELEMENTS[atom_0_type].mass + ELEMENTS[atom_1_type].mass) / 2, com, ELEMENTS[atom[1][0]].mass, atom[1][1:4]) * (
-					(ELEMENTS[atom_0_type].mass + ELEMENTS[atom_1_type].mass) / 2) / ELEMENTS[atom[1][0]].mass
+			# Center of mass between atomic pair COM and atom
+			pair_com = calc_com((ELEMENTS[atom_0_type].mass + ELEMENTS[atom_1_type].mass) / 2, com, ELEMENTS[atom[1][0]].mass, atom[1][1:4])
 			distances[atom[0]] = get_dist(com.array, pair_com)
 
 		# Sort by distance and calculate closest 2
 		sorted_distances = {k: v for k, v in sorted(distances.items(), key=lambda item: item[1])}
-		closest_2 = tuple(itertools.islice(sorted_distances.items(), 2))
 
-		# Get atom types of 2 closest neighbours
-		n1_type = current_xyz.iloc[closest_2[0][0]][0]
-		n2_type = current_xyz.iloc[closest_2[1][0]][0] if len(closest_2) > 1 else ''
+		result_array = [
+			row['id'],
+			mol_id,
+			atom_0_index,
+			atom_0_type, 
+			ELEMENTS[atom_0_type].number,
+			atom_1_index, 
+			atom_1_type,
+			ELEMENTS[atom_1_type].number, 
+			get_dist(atom_0_coords.array, atom_1_coords.array), 
+			row['type'],
+			row['scalar_coupling_constant']
+		]
 
-		# TODO: Maybe append 10 neighbour distances in order of closest to furthest?
-		results.append(
-			[row['id'], mol_id, atom_0_index, atom_0_type, ELEMENTS[atom_0_type].number, atom_1_index, atom_1_type, ELEMENTS[atom_1_type].number,
-				get_dist(atom_0_coords.array, atom_1_coords.array), row['type'], row['scalar_coupling_constant'], n1_type, ELEMENTS[n1_type].number,
-				closest_2[0][1], n2_type, 0 if n2_type == '' else ELEMENTS[n2_type].number, closest_2[1][1] if len(closest_2) > 1 else 0]
-		)
+		# Add all distances calculated (closest first)
+		for neighbour in sorted_distances.items():
+			neighbour_type = current_xyz.iloc[neighbour[0]][0],
+			result_array.extend([
+				neighbour_type[0],
+				ELEMENTS[neighbour_type[0]].number,
+				neighbour[1]
+			])
+
+		# Add blank entries as necessary to have 10 neighbours total
+		result_array.extend(['', 0, 0] * (10 - len(sorted_distances)))
+
+		# Add to results list
+		results.append(result_array)
 
 	# Just for logging to track progress
 	if file_counter is not None and total_files is not None:
@@ -160,10 +175,52 @@ def main() -> None:
 	# Write all results to file
 	with open(output_file, 'w', newline='') as csv_file:
 		csv_out = csv.writer(csv_file)
+
 		# Write header
 		csv_out.writerow(
-			['id', 'molecule_name', 'atom_index_0', 'atom_type_0', 'atomic_number_0', 'atom_index_1', 'atom_type_1', 'atomic_number_1', 'pair_dist',
-				'type', 'scalar_coupling_constant', 'n1_type', 'n1_number', 'n1_dist', 'n2_type', 'n2_number', 'n2_dist']
+			[
+				'id',
+				'molecule_name',
+				'atom_index_0',
+				'atom_type_0',
+				'atomic_number_0',
+				'atom_index_1',
+				'atom_type_1',
+				'atomic_number_1',
+				'pair_dist',
+				'type',
+				'scalar_coupling_constant',
+				'n1_type',
+				'n1_number',
+				'n1_dist',
+				'n2_type',
+				'n2_number',
+				'n2_dist',
+				'n3_type',
+				'n3_number',
+				'n3_dist',
+				'n4_type',
+				'n4_number',
+				'n4_dist',
+				'n5_type',
+				'n5_number',
+				'n5_dist',
+				'n6_type',
+				'n6_number',
+				'n6_dist',
+				'n7_type',
+				'n7_number',
+				'n7_dist',
+				'n8_type',
+				'n8_number',
+				'n8_dist',
+				'n9_type',
+				'n9_number',
+				'n9_dist',
+				'n10_type',
+				'n10_number',
+				'n10_dist'
+			]
 		)
 
 		# Write results of all Futures
