@@ -112,10 +112,11 @@ def process_xyz(
 		n1_type = current_xyz.iloc[closest_2[0][0]][0]
 		n2_type = current_xyz.iloc[closest_2[1][0]][0] if len(closest_2) > 1 else ''
 
+		# TODO: Maybe append 10 neighbour distances in order of closest to furthest?
 		results.append(
 			[row['id'], mol_id, atom_0_index, atom_0_type, ELEMENTS[atom_0_type].number, atom_1_index, atom_1_type, ELEMENTS[atom_1_type].number,
 				get_dist(atom_0_coords.array, atom_1_coords.array), row['type'], row['scalar_coupling_constant'], n1_type, ELEMENTS[n1_type].number,
-				closest_2[0][1], n2_type, '' if n2_type == '' else ELEMENTS[n2_type].number, closest_2[1][1] if len(closest_2) > 1 else 0]
+				closest_2[0][1], n2_type, 0 if n2_type == '' else ELEMENTS[n2_type].number, closest_2[1][1] if len(closest_2) > 1 else 0]
 		)
 
 	# Just for logging to track progress
