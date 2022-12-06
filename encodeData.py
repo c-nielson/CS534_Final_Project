@@ -1,13 +1,17 @@
 from tkinter import filedialog
 
 import pandas as pd
-from sklearn import preprocessing
 
 
 def main():
+	"""
+	Used to encode categorical data. Saves encoded data to selected file.
+	:return: None
+	"""
 	data_in = filedialog.askopenfilename(title='Select File for Encoding', initialdir='./data/')
 	data_out = filedialog.asksaveasfilename(title='Select File to Save Results', initialdir='./data/', filetypes=[('CSV', '*.csv')])
 
+	# Columns that need encoding
 	cols_to_encode = [
 		'atom_type_0',
 		'atom_type_1',
@@ -24,11 +28,13 @@ def main():
 		'n10_type'
 	]
 
+	# Open columns that need to be encoded
 	df = pd.read_csv(
 		data_in,
 		usecols=cols_to_encode
 	)
 
+	# Open numerical columns
 	df_encoded = pd.read_csv(
 		data_in,
 		usecols=[
@@ -47,17 +53,17 @@ def main():
 		]
 	)
 
+	# Iterate through columns that need encoding and join them to numerical columns after encoding
 	for col in cols_to_encode:
 		df_encoded = df_encoded.join(
 			pd.get_dummies(df[[col]])
 		)
 
-	max_abs_scaler = preprocessing.MaxAbsScaler()
-	df_encoded[['scalar_coupling_constant']] = max_abs_scaler.fit_transform(df_encoded[['scalar_coupling_constant']])
-
+	# Save
 	df_encoded.to_csv(data_out)
 
 
+# Entry point
 if __name__ == "__main__":
 	import sys
 
