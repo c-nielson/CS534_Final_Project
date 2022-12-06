@@ -1,2 +1,4 @@
 pandas~=1.5.1
 molmass~=2022.10.18
+
+scikit-learn~=1.1.3
